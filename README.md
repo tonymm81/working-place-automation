@@ -1,6 +1,8 @@
 # working-place-automation
 this device will lockup your working place power and lights. using rfid tags.
+
 parts:
+
 1: nucleo st432kc microkontroller
 2: Esp 2806 Wlan adapter
 3: Pmodals lux sensor (spi controlled)
