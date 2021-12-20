@@ -33,4 +33,6 @@ arduino fan controller:
  this is simple device. you can setup the set point to temp and arduino adjust the fan speed based on that. If room is dark then device is shut down. if there is light
  enough, it will power on if motion is detected. You can adjust the setpoint with remote control.
 
+ there is schematics also in devices folder
+
  
