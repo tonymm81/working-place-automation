@@ -29,7 +29,7 @@ short describe Mbed-os-working-place-automation project:
 
 
 arduino fan controller:
- i also made a arduino based fan controller:
+ i also made a arduino based fan controller what is under working place automation devices control.
  
  parts:
  
