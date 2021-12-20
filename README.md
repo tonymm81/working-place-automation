@@ -25,7 +25,7 @@ parts:
 
 
 short describe Mbed-os-working-place-automation project:
- I make a device what automatic the working place. It control 5 different powersource. It protecting the user to not forget soldering station on state too long. It also lock up your working place electrics. When you arrive you working place, the device light up the lights if the lux value is under  100. this device has also benchswitch. When you show the rfid tag and power on the device. On screen you can see date time from udp and also asking are you soldering today. If you put yes, the soldering is powering on. When user is not sitting behind the desk and not moving in the room device shutdown the soldering machine, and power on it if motion is detected. If you show the rfid tag again, the device shutdown. I use mbed-os to make this code. 
+ I make a device what automatic the working place. It control 5 different powersource. It protecting the user to not forget soldering station on state too long. It also lock up your working place electrics. When you arrive you working place, the device light up the lights if the lux value is under  100. this device has also benchswitch. When you show the rfid tag and power on the device. On screen you can see date time from udp and also asking are you soldering today. If you put yes, the soldering is powering on. When user is not sitting behind the desk and not moving in the room device shutdown the soldering machine, and power on it if motion is detected. If you show the rfid tag again, the device shutdown. I use mbed-os to make this code. there is schematics also in devices folder.
 
 
 arduino fan controller:
@@ -57,6 +57,6 @@ arduino fan controller:
  enough, it will power on if motion is detected. You can adjust the setpoint with remote control. If this device wont get any movement it will shutdown and waits to new signal 
  from movement detector.
 
- there is schematics also in devices folder
+ 
 
  
