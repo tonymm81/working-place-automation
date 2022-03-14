@@ -20,20 +20,37 @@ Device has also lux sensor what prints the value to screen.
 Parts:
 
 Arduino uno
+
 Nucleo f303re microcontroller
+
 uln2806 chip
+
 sn74hc595 chip x2pc
+
 welleman rfid reader
+
 20x4 I2C lcd screen
+
 sh1106 oled screen (spi)
+
 mosfet 2amps
+
 resistor 18k 4pc
+
 resistor 800 ohm 6pc
+
 resistor 300 ohm 4pc
+
 switch 3pc
+
 potentiometer 1pc
+
 ultrasonic sensor HCSR04
+
 dht11 sensor
+
 welleman motion sensor
+
 welleman lux sensor
+
 leds 8pc
