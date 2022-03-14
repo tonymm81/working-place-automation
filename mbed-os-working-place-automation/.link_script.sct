@@ -1,7 +1,7 @@
-#! armclang -E --target=arm-arm-none-eabi -x c -mcpu=cortex-m4 -Imbed-os/targets/TARGET_STM/TARGET_STM32L4/TARGET_STM32L432xC/device/TOOLCHAIN_ARM_STD
+#! armclang -E --target=arm-arm-none-eabi -x c -mcpu=cortex-m4 -Imbed-os/targets/TARGET_STM/TARGET_STM32F3/TARGET_STM32F303xE/device/TOOLCHAIN_ARM_STD
 ; Scatter-Loading Description File
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Copyright (c) 2015, STMicroelectronics
+; Copyright (c) 2014, STMicroelectronics
 ; All rights reserved.
 ;
 ; Redistribution and use in source and binary forms, with or without
@@ -33,7 +33,7 @@
 #endif
 
 #if !defined(MBED_APP_SIZE)
-  #define MBED_APP_SIZE 0x40000
+  #define MBED_APP_SIZE 0x80000
 #endif
 
 #if !defined(MBED_BOOT_STACK_SIZE)
@@ -42,7 +42,7 @@
 
 #define Stack_Size MBED_BOOT_STACK_SIZE
 
-; 256KB FLASH (0x40000) + 64KB SRAM (0x10000)
+; STM32F303RE: 512KB FLASH (0x80000) + 64KB SRAM (0x10000) + 16KB CCMRAM (0x4000)
 LR_IROM1 MBED_APP_START MBED_APP_SIZE  {    ; load region size_region
 
   ER_IROM1 MBED_APP_START MBED_APP_SIZE  {  ; load address = execution address
@@ -51,11 +51,16 @@ LR_IROM1 MBED_APP_START MBED_APP_SIZE  {    ; load region size_region
    .ANY (+RO)
   }
 
-  ; Total: 98 vectors = 392 bytes (0x188) to be reserved in RAM
-  RW_IRAM1 (0x20000000+0x188) (0x00010000-0x188-Stack_Size)  {
-  .ANY (+RW +ZI)
+  ; 101 vectors = 404 bytes (0x194) 8-byte aligned = 0x198 (0x194 + 0x4) to be reserved in RAM
+  RW_IRAM1 (0x20000000+0x198) (0x10000-0x198-Stack_Size)  {  ; RW data
+   .ANY (+RW +ZI)
   }
 
-  ARM_LIB_STACK (0x20000000+0x00010000) EMPTY -Stack_Size { ; stack
+  ARM_LIB_STACK (0x20000000+0x10000) EMPTY -Stack_Size { ; stack
+  }
+
+  CCMRAM (0x10000000) (0x4000)  {
+   .ANY (CCMRAM)
   }
 }
+

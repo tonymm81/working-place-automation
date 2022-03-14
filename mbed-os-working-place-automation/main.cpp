@@ -2,218 +2,293 @@
  * Copyright (c) 2019 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  */
- // here is libraries
 
 #include "mbed.h"
-#include <SPI.h>
+#include "platform/mbed_thread.h"
 #include "SSH1106.h" //screen oled
-#include "ESP8266Interface.h" // wlan 
+#include "ESP8266Interface.h"
 #include "ntp-client/NTPClient.h"
-
+#include <SPI.h>
+#include <SPISlave.h>
+#include "hcsr04.h" // ultrasonic distance meaure library
 #define ntpAddress "time.mikes.fi"  // The VTT Mikes in Helsinki
 #define ntpPort 123     // Typically 123 for every NTP server
+#include "string" //no need use char anymore
+//#pragma-import( __use_two_region_memory)//test
 
-
-//wlan setup
+//testing
+DigitalOut rst_wlan(D2);
+SPI oledspi(PA_7, PA_6, PA_5); // mosi, miso, clk to screen, sn74hc595 chip x 2                                         
+Serial pc(USBTX, USBRX, 9600);
+//USBSerial pc;
+//Serial pc(PC_12, PD_2, 9600);
 ESP8266Interface esp(MBED_CONF_APP_ESP_TX_PIN, MBED_CONF_APP_ESP_RX_PIN);
-//pin setups
-SPI spi(D11, D12, D13); // mosi, miso, sck
-SPI oledspi(PA_7, PA_6, PA_5); // mosi, miso, clk to screen
+//SPISlave(spiArduino);
+HCSR04  usensor(D14,D15);
+  
+  
 
-DigitalIn motiondetector(D10);
-DigitalOut alsCS(D7);
-DigitalIn switch_yes(D2);
-DigitalIn switch_no(D3);
-AnalogIn benchswitch(A0);
-DigitalOut sn74hc595CS(D9);
-PwmOut speaker(A2);
-DigitalOut oledCS(D8);
-DigitalOut rst_oled(D5);
-DigitalOut dc_oled(D6);
-AnalogIn rfid_permission(A3);
-
-//global values
-char solder[15];
-char alsByte0 = 0;           // 8 bit data from sensor board, char is the unsigned 8 bit
-char alsByte1 = 0;           // 8 bit data from sensor board
-char alsByteSh0 = 0;
-char alsByteSh1 = 0;
-char als8bit = 0;
-unsigned short alsRaw = 0;   // unsigned 16 bit
-float alsScaledF = 0.0;   
-char udp_timestamp[30];
-int alsScaledI = 0; // 32 bit integer
-int getmovement = 0;
-char out8 = 0x69;
-int usr_choice = 1;
-bool loop_rule = false;
-bool asking_loop = true;
-int no_soldering = 2;
-int switch_position = 0;
-int no_switch = 0;
-int what_state = 0;
-int  bench = 0;
-int soldermovement = 0;
-
-// functions
-int getALS(); // function for the Digilent PmodALS sensor
-int getPhotoDiode(); // function for the photo diode circuit
-void speakercall();
-void write_to_595(int what_state);
-void screen();
-void locking();
-int benchswitch_state();
-void get_time_from_web();
-const char *sec2str(nsapi_security_t sec);//wlan setups
-void scan_demo(WiFiInterface *wifi);//wlan demo
-
-SSH1106 ssh1106(oledspi, oledCS, dc_oled, rst_oled); // screen library call
+AnalogIn Lux_sensor(PC_0);
+DigitalOut ultasonic_Trigger(D14);
+DigitalIn ultrasonic_echo(D15);
+DigitalIn motion_sensor(D8);
+DigitalOut CS_to_hc595chip(D7);
+DigitalOut CS_to_screen(D0);// solder this wire D1 is broken
+DigitalOut RST_to_screen(D10);
+DigitalIn from_arduino_spi(D9);
+DigitalIn switch_no(D5);
+DigitalIn switch_yes(D6);
+DigitalOut CS_to_hc595_2(D4);
+DigitalOut DC_to_screen(D3);
+//DigitalIn back_to_menu_button(D2); // solder wires and resistor here!!!
+DigitalIn ssel(PB_12);
+//spi communication setup
+SSH1106 ssh1106(oledspi, CS_to_screen, DC_to_screen, RST_to_screen); //screen
+SPISlave spiArduino(PB_15, PB_14, PB_13, PB_12); // mosi, miso, sck , ssel PB_12
+//SPISlave(spiArduino);
+//here are the global variables
+float lux = 0.0;
+char udp_timestamp[35]; // temporary, using to print out the values because usb did not work
+int counter, mov = 0;
+bool permission = false;
+bool person_in_room = false;
+int choice, device = 0;
+int msgback = 8;// return message to arduino
+float distance_measured = 0.0;
+// here is functions
+int wait_buttons(int btn1, int btn2);
+void screen(int line1, int line2, int line3);
+int message_from_master(int message);//spi comminication
+void my_spi_write(int choice,int device);//spi communication function to serial chips and oled screen
+bool check_if_person_is_room(bool person_in_room); // this function checks if the person is in the room with ultrasonic sensor and movement sensor
+int control_devices(bool soldering, bool power_machine, int write_flag);
 
 
 
-
-int main(){ 
-    // SPI for the ALS 
-    // Setup the spi for 8 bit data, high steady state clock,
-    // second edge capture, with a 12MHz clock rate
-    
-    int timer = 0;
-    spi.format(8,0); 
-    spi.frequency(12000000);
-    oledspi.format(8,0); 
-    oledspi.frequency(12000000);
-    // ready to wait the conversion start
-    rst_oled.write(0);
-    dc_oled.write(0);
-    alsCS.write(1);
-    oledCS.write(1);
-    sn74hc595CS.write(1);
-    write_to_595(8);
-    oledCS.write(1);
-    screen();
-    speakercall();
-    get_time_from_web();
+int main()
+{
+    bool power_machine = false;
+    bool soldering = false;
+    int send_to_595_1 = 0;
+    int send_to_secone_595 = 0;
+    int btn1, btn2, asking_menu = 0;
+    Thread threadSample(osPriorityNormal, 2000);//memory error
     ssh1106.init();
-    locking();
+    ThisThread::sleep_for(200);
+    from_arduino_spi.mode(PullDown);
     
-    while (loop_rule) {
-        float per = rfid_permission.read(); // here we read if user shutdown the system, lets go the locking function
-        if (per < 0.50f){
-            usr_choice = 1; // this is for the screen
-            no_soldering = 1; // lets change the soldering rule
-            asking_loop = true; // for screen loop
-            locking();
-            
-            }
-        if (no_soldering == 0){ //if user choose to solder today lets check the benchswitch. if it not true then movement detector start calculate time and shut down the power from soldering station
-            bench = benchswitch_state();
-            if (bench == 0){
-                getmovement = motiondetector.read();
-                if (getmovement== 0 ){ // if not movement lets count and later power of the soldering station if nobody is in room
-                    soldermovement = soldermovement + 1;
-                    }
-                if (soldermovement == 50){
-                    write_to_595(11); // if time rule is full, power off soldering station
-                    strcpy(solder, "off");
-                    }
-                if (getmovement == 1){
-                    write_to_595(10);// and if noticed movement then power up the soldering station
-                    soldermovement = 0;
-                    strcpy(solder, "on");
-                    }
-                }
-            }
-        alsScaledI = getALS(); // lets check the lux value
-        alsScaledF = getPhotoDiode();
-        ThisThread::sleep_for(1000);
-        screen();    
-        timer = timer +1;
-        if (timer == 40){
-            get_time_from_web();
-            timer = 0;
-            }
-        }
-}
-
-
-int getALS(){ // this not work correct, figure it out!!
-    
-    alsCS = 0; 
-    ThisThread::sleep_for(500);
-    alsByte0 = spi.write(0x00);
-    alsByte1 = spi.write(0x00);
-    ThisThread::sleep_for(500);
-    alsCS = 1;
+    int message, write_flag = 0;            
+    //oledspi.select();
+    //ssh1106.init();
+    oledspi.format(8, 0);//3 old setup
+    oledspi.frequency(8000000); // old was 12000000
+    spiArduino.reply(0x00);
+    CS_to_hc595chip.write(1);
+    CS_to_screen.write(1);
+    RST_to_screen.write(1);
+    CS_to_hc595_2.write(1);
+    DC_to_screen.write(0);
+    pc.printf("success");    
+    ThisThread::sleep_for(200);
+    CS_to_hc595chip.write(1);
+    char number[15];
+    char number1[15];
+    my_spi_write(8,0);//all off
+    my_spi_write(13,1); // standby led on
+    //get_time_from_web();// throw error about new operator is out of memory. this function is planning
    
-    alsByteSh0 = alsByte0 << 4;
-    alsByteSh1 = alsByte1 >> 4;
+    pc.printf("success\n");
+    ssh1106.init();
+    ThisThread::sleep_for(200);
+    while(1){
     
-    als8bit =( alsByteSh0 | alsByteSh1 );
+        person_in_room = check_if_person_is_room(person_in_room); // this function call is to measure with two sensors are the person in the room
+        printf(" person in room %d\n", person_in_room);
+        lux = Lux_sensor.read() * 1000;
+        ThisThread::sleep_for(300);
+        printf("lux  is: %0.2f\n", lux);
+        
+        
+        if(from_arduino_spi.read() == 1){ // if arduino raises interrupt pin lets go to message function ja take commands from it.
+            message = 0;
+            message = message_from_master(message);
+            printf("%d",  message);
+            ThisThread::sleep_for(1000);
+            
+            
+        }
+        if (permission == true){ // here we wait user buttons state
+            write_flag = control_devices(soldering, power_machine, write_flag);
+            // do here menubutton
+            
+            if (asking_menu == 0){ // we dont know the user choice
+                screen(6,1,3);// ask soldering
+                btn1, btn2 = wait_buttons(btn1, btn2);
+                if (btn1 >= 1){ soldering = true;} else{soldering==false;}
+                
+                screen(6,5,3); // ask power machine
+                btn1, btn2 = wait_buttons(btn1, btn2);
+                if (btn1 >= 1){ power_machine = true;} else {power_machine == false;}
+                
+                printf("yes %d, no %d\n", btn1, btn2);
+                asking_menu = 1; // now we no users choice and now raise the flag
+                }else{
+                   screen(6,8,2);// back to menu button (solder this analog in or digital if avaible
+                    }    
+                
+                
+            
+                }
+            else{
+                soldering = false;
+                power_machine = false;
+                asking_menu = 0;
+                screen(6,1,3);
+                write_flag = 0;
+                write_flag = control_devices(soldering, power_machine, write_flag);
+                }   
+                     
+        if ( person_in_room == false && permission == true){
+                if (write_flag == 2 || write_flag == 1){
+                    write_flag = 4; // if person is not in room lets  shutdown th soldering
+                }
+                write_flag = control_devices(soldering, power_machine, write_flag);
+                
+        }
+                
+        if (person_in_room == true && send_to_595_1 == 0 && permission == false){
+           my_spi_write(0,0); // lights on
+            
+            send_to_595_1=1;
+               
+           } 
+        else if (person_in_room == false && send_to_595_1 == 1 && permission == false){
+             my_spi_write(8,0);// lights off
+             send_to_595_1=0;
+                
+                
+                }    
+         }
+                     
     
-    alsRaw = als8bit; // 
-    alsScaledF = (float(alsRaw))*(float(4.45));                                      
-    ThisThread::sleep_for(100);
-    return (int)alsScaledF; 
 }
 
 
-int getPhotoDiode() {
-    AnalogIn ainPD(A0);
-    unsigned short pd12bit = 0;
-    float pdScaledF = 0.0;
-    pd12bit = ainPD.read_u16() >>4; // leftmost 12 bits moved 4 bits to right.
-    pdScaledF = (float(pd12bit))*(float(0.1)); 
-    return (int)pdScaledF;
-}
+int control_devices(bool soldering, bool power_machine, int write_flag){ // depends on user choice here we switch devices on and also shutdown the soldering station in person in room is false
+    if (soldering == true && person_in_room == true && write_flag == 0){
+        my_spi_write(15, 0); // test 2 last bit zero
+        write_flag = 1;
+        printf("soldering on\n");
+        }
+    if ( power_machine == true && write_flag == 1){
+        my_spi_write(14, 0); // test all bits up
+        write_flag = 2;
+        printf("power on\n");
+        }
+    if ( person_in_room == false && write_flag == 4){
+        my_spi_write(16, 0); // 3 last bit zero
+        write_flag = 0;
+        printf("solder off\n");
+        
+        }
+    printf("control_devices sol:%d pow %d flag %d\n", soldering, power_machine, write_flag);
+    return write_flag;
+    }
 
 
-void speakercall(){ // to pwm speaker/buzzer
-    speaker.period(1.0/500.0);
-    ThisThread::sleep_for(10000);
-    speaker=0.0;
-    
-}
+bool check_if_person_is_room(bool person_in_room){ // here we check is the person in room with ultrasonic sensor and motion sensor
+    usensor.start();
+    ThisThread::sleep_for(500); 
+    distance_measured = usensor.get_dist_cm();
+    ThisThread::sleep_for(500); 
+    printf("sensor distance %02.f\n", distance_measured);
+    mov = motion_sensor.read();
+    printf("movement is: %d\n", mov);
+    if ( distance_measured > 200 ){
+        if ( mov == 0){
+            person_in_room = false;
+            }
+        }else{
+            person_in_room = true;
+            }
+    return person_in_room;
+    }
 
-void write_to_595(int what_state){
-    char out8 = 0x69;
-    char dataArray[] = { // here is output setups to sn74hc595n chip
-        0b10000000, //relay1
-        0b01000000, // relay2
-        0b00100000, // relay3
-        0b00010000, // relay 4
-        0b00001000, // relay 5
-        0b00000100, // led red
-        0b00000010,// led green
-        0b00000001, //NC
+
+void my_spi_write(int choice,int device){
+    char bytesArray[] = { // here is output setups to both sn74hc595n chip
+        0b10000000, //
+        0b01000000, // 
+        0b00100000, // 
+        0b00010000, // 
+        0b00001000, // 
+        0b00000100, // 
+        0b00000010,// 
+        0b00000001, //
         0b00000000, // all off
-        0b00001100, // red light and lights
-        0b11111010, // green led and all on
+        0b00001100, // 
+        0b11111010, // 
         0b10111010, // soldering off
+        0b01111100, //second sn74hc595n chip tree leds on
+        0b01000000, // second sn74hc595n chip one led?
+        0b11111111,
+        0b11111100,
+        0b11111000,
         
         };
-        sn74hc595CS.write(0);
-        spi.write(dataArray[what_state]); // this writes the setup what user choose
-        ThisThread::sleep_for(500);
-        sn74hc595CS.write(1);
-        ThisThread::sleep_for(500);
         
+     
+    if (device ==0){ //here we choose wich chip we control
+        CS_to_hc595chip.write(0);
+        oledspi.write(bytesArray[choice]);
+        ThisThread::sleep_for(200);
+        CS_to_hc595chip.write(1);
+        }
+    if (device == 1){
+        CS_to_hc595_2.write(0);
+        oledspi.write(bytesArray[choice]);
+        ThisThread::sleep_for(200);
+        CS_to_hc595_2.write(1);
     }
-    
-    
-void screen(){
-    //SPI lcd(p11, NC, p13);      // mosi, miso (nc), sclk /// nää täytyy modata omaa käyttöö
-    //DigitalOut cs(p15);         // chip select  (active low)
-    //DigitalOut cd(p14);         // command/data (0=command, 1=data)
-    //DigitalOut rst(p16);        // Reset (active low)
-    ssh1106.init();
-    // here is screen variables
+
+}
+
+
+
+int wait_buttons(int btn1, int btn2){ // here we wait user to chooce soldering and power usage.
+    btn1, btn2 = 0;
+    while(1){
+        btn1 = switch_yes.read();
+        btn2 = switch_no.read();
+        ThisThread::sleep_for(200);
+        if(btn1 == 1 || btn2 == 1){ 
+           break;
+           }
+        
+        }
+    return btn1,btn2;
+    }
+
+void screen(int line1, int line2, int line3){ // this is printout function.  here we print the oled screen some information
+    if (counter == 10)//this is because sometimes screen is messed up so lets call .init() command to reset the screen
+    {
+        ssh1106.init();
+        ssh1106.clearBuffer();
+        ThisThread::sleep_for(500);
+        counter = 0;
+    }
+    //ssh1106.init();
+    ssh1106.clear();
+    ThisThread::sleep_for(600);// this is good solution. now screen works better than ever.
+    char solder[10];
     char strquestion[40];
-    char lux[30];
+    char str_lux[20];
     char strwelcome[20];
     char choice[10];
     char working_text[30];
     char str_time[30];
     char soldering[30];
+    char distance[20];
     int question = 8;
     int welcome= 8;
     int lux_value = 8;
@@ -221,234 +296,95 @@ void screen(){
     int working_number = 8;
     int int_time = 8;
     int soldering_ = 8;
-    //here is the screen text setups
-    question = sprintf(strquestion, "are you using soldering station");
-    welcome = sprintf(strwelcome, "Welcome!!");
-    lux_value = sprintf(lux, "lux value: %0.2f", alsScaledF);
-    choice_1 = sprintf(choice, "Yes Or no");
-    working_number = sprintf(working_text, "Hi! and have nice day!");
-    int_time = sprintf(str_time, "%s", udp_timestamp);
-    soldering_ = sprintf(soldering, "soldering station is: %s", solder);
-    //ssh1106.init();
-    ssh1106.clear();
-    ssh1106.clearBuffer();
-    
-    while(asking_loop){ // here we ask that if user want to solder or not
-        ThisThread::sleep_for(500);
+   
+    int int_distance = 8;
+    char text_array[30][30] = {
+        "welcome!",
+        "Are you soldering to day",
+        "back to menu",
+        "Yes or no",
+        "time is: ",
+        "are you using power?",
+        "Hi and have nice day",
+        "No permission. Show rfid!!",
+        "Devices are on",
+        
+        };
+    if(permission == false){ // if arduino message told to device keep shut down
+        strcpy(udp_timestamp, text_array[7]);
+        int_time = sprintf(str_time, "%s", udp_timestamp);
+        ssh1106.writeText(0,1, font_4x5, str_time, int_time);
+        counter = counter + 1;
+        
+        
+        }else{ // arduino gives permission to start
+        strcpy(udp_timestamp, "here comes time ");
+        question = sprintf(strquestion, text_array[line2]);
+        welcome = sprintf(strwelcome, text_array[0]);
+        lux_value = sprintf(str_lux, "Lux value: %0.2f", lux);
+        choice_1 = sprintf(choice, text_array[line3]);
+        working_number = sprintf(working_text, text_array[line1]);
+        int_time = sprintf(str_time, "%s", udp_timestamp);
+        int_distance = sprintf(distance, "Distance is: %0.2f", distance_measured);
+        soldering_ = sprintf(soldering, "soldering station is: %s", solder);
+        ssh1106.writeText(0,1, font_4x5, str_time, int_time);
         ssh1106.writeText(0,2, font_4x5, strwelcome, welcome); // here we print out the text to screen
-        ssh1106.writeText(0,3, font_4x5, strquestion, question);
-        ssh1106.writeText(0,4, font_4x5, choice, choice_1);
-        ssh1106.writeText(0,5, font_4x5, lux, lux_value);
-        ssh1106.writeText(0,1, font_4x5, str_time, int_time);
-        ThisThread::sleep_for(100);
+        ssh1106.writeText(0,6, font_4x5, strquestion, question);
+        ssh1106.writeText(0,7, font_4x5, choice, choice_1);
+        ssh1106.writeText(0,5, font_4x5, str_lux, lux_value);
+        ssh1106.writeText(0,3, font_4x5, working_text, working_number);
+        ssh1106.writeText(0,4, font_4x5, distance, int_distance);
+        counter = counter + 1;
         //ssh1106.update();
-        ThisThread::sleep_for(100);
-        switch_position = switch_yes.read();
-        no_switch = switch_no.read();
-        if (switch_position == 1){ // if user wants to soldering this if clause pull up the outputs and put no_soldering to 0 state
-            usr_choice = 0;
-            no_soldering = 0;
-            strcpy(solder, "on"); // lets copy to screen
-            write_to_595(10); // all outputs are on
-            asking_loop = false;
-            break;
-                
-            }
-        
-            
-        if(no_switch == 1){ // if user dont want to solder then no_solder state is 1
-            usr_choice = 0;
-            no_soldering = 1;
-            strcpy(solder, "off");// lets copy to screen
-            asking_loop = false;
-            break;
-                
-                
-            }
-        if (usr_choice == 1){
-            break;
-            }                
-         }
-            
-            
-    if (no_soldering == 1 && usr_choice == 0){ //user choose to not soldering. screen text setup
-        //ssh1106.init();
-        ssh1106.clear();
-        ssh1106.clearBuffer();
-        ThisThread::sleep_for(500);
-        ssh1106.writeText(0,2, font_4x5, strwelcome, welcome);// here we print out the text to screen
-        ssh1106.writeText(0,3, font_4x5, working_text, working_number);
-        ssh1106.writeText(0,1, font_4x5, str_time, int_time);
-        ssh1106.writeText(0,4, font_4x5, lux, lux_value);
-        ssh1106.writeText(0,5, font_4x5, soldering, soldering_);
-        ThisThread::sleep_for(100);
-        
         }
-        
-    if (no_soldering == 0 && usr_choice == 0){ //user choose to soldering screen text setup
-        //ssh1106.init();
-        ssh1106.clear();
-        ssh1106.clearBuffer();
-        ThisThread::sleep_for(500);
-        ssh1106.writeText(0,2, font_4x5, strwelcome, welcome);// here we print out the text to screen
-        ssh1106.writeText(0,3, font_4x5, working_text, working_number);
-        ssh1106.writeText(0,1, font_4x5, str_time, int_time);
-        ssh1106.writeText(0,4, font_4x5, lux, lux_value);
-        ssh1106.writeText(0,5, font_4x5, soldering, soldering_);
-        ThisThread::sleep_for(100);
-        }
-    
- }
-
-
-void locking(){ // program starts from this function and waits user
-    loop_rule = false; // mainloop rule
-    int counter = 0;
-    int local_rule = 0;
-    write_to_595(5); // only red led
-    for (int i= 0; i <=8;){ // here we wait user. if movement detected, powerr on the lights
-      counter = counter +1;
-      switch_position = 0;
-      no_switch = 0;
-      float per = rfid_permission.read();  // rfid reader
-      getmovement = motiondetector.read(); // motion detection to lights
-      alsScaledI = getALS();
-      alsScaledF = getPhotoDiode();
-      screen();//screen update
-      if (getmovement == 1 && local_rule == 0 ){ // keeps light on some time
-          if (getmovement == 1 && alsScaledF < 150.00f){
-            write_to_595(9); // lights and red led
-            local_rule = 1;
-            counter = 0;
-            }
-          }
-      bench = benchswitch_state();
-      if (per <= 1.00f && per > 0.50f && bench == 1){ // locking opened. lets power up all execpt soldering station
-          loop_rule = true;
-          asking_loop = true;
-          write_to_595(11); // all on , green light, soldering off
-          i = 8;
-          break;
-          }
-      if (counter == 25){
-          counter = 0;
-          local_rule = 0;
-          write_to_595(5);// only red led
-          }  
-    ThisThread::sleep_for(1000);
-    
     }
+
+
+int message_from_master(int message)// here we go to spi connection slave mode and wait message from master. This gives the permission to start up the system.
+{
+    spiArduino.format(8, 0);
+    spiArduino.reply(msgback);
+    while(1){
         
+        
+        int counter = 0;
+        
+        ThisThread::sleep_for(500);
+        if (spiArduino.receive()) {
+            printf("meggages sending and receive\n");
+            message = spiArduino.read();   // Read byte from master
+            spiArduino.reply(msgback);         // Make this the next reply
+            ThisThread::sleep_for(1600); // 1500 worked // sometimes visit two times in function
+            // lets test if this fix the old message problem Sometimes spi sends back old value 2 or 3 times. have to find what causes this problem.
+            break;
+                
+            }
+       counter = counter +1;
+       //ThisThread::sleep_for(500);
+       if (counter == 25){
+           break;
+           } 
+    }
+    printf("here is message from master %d\n", message);
+    
+   printf("out of message function\n");
+   if(message == 1){ // master gives permission to start
+       
+        my_spi_write(12,1);
+        permission = true;
+        person_in_room = true;
+        msgback=10; // permission 
+        
+    }
+    if (message == 3 || message == 2){ // master gives signal to shutdown
+        my_spi_write(13,1);
+        permission = false;
+        person_in_room = false;
+        
+        msgback=12; // no permission
+        
+        }
+   return message; 
 }
 
 
-int benchswitch_state(){ //here we check the benchswitch state
-    float pos = 0.0;
-    int state = 0;
-    pos = benchswitch.read();
-    if ( pos <= 1.00f && pos > 0.55f){
-        state = 1;
-    }else{
-        state = 0;
-    }
-    return state;
-    } 
-  
-  
-void get_time_from_web(){ // in this function we try to get timestamp from net
-  // Setting up WLAN
- 
-    printf("WiFi example\r\n\r\n");
-    
-    //Store device IP
-    SocketAddress deviceIP;
-    ThisThread::sleep_for(500); // waiting for the ESP8266 to wake up.
-      
-    scan_demo(&esp);
- 
-    printf("\r\nConnecting...\r\n");
-     int ret = esp.connect(MBED_CONF_APP_WIFI_SSID, MBED_CONF_APP_WIFI_PASSWORD, NSAPI_SECURITY_WPA_WPA2);
-    if (ret != 0) {
-        printf("\r\nConnection error\r\n");
-        //return -1;
-    }
- 
-    
-    printf("Success\n\n");
-    printf("MAC: %s\n", esp.get_mac_address());
-    esp.get_ip_address();//&deviceIP
-    printf("IP: %s\n", deviceIP.get_ip_address());
-    printf("Netmask: %s\n", esp.get_netmask());
-    printf("Gateway: %s\n", esp.get_gateway());
-    printf("RSSI: %d\n\n", esp.get_rssi());
- 
-// --- WLAN
-    
-// NTP demo    
-    printf("\nNTP Client example (using WLAN)\r\n");
-    
-    
-    NTPClient ntp(&esp);
-    
-    ntp.set_server(ntpAddress, ntpPort);
-      
-    
-    time_t timestamp = ntp.get_timestamp(); //lets get the time stamp from net
-        
-    if (timestamp < 0) {
-        printf("An error occurred when getting the time. Code: %u\r\n", timestamp);
-    } else {
-        printf("The timestamp seconds from the NTP server in\r\n  32 bit hexadecimal number is %X\r\n", timestamp);
-        printf("  decimal number is %u\r\n", timestamp);
-        timestamp += (60*60*3);  //  GMT +3  for Finland for the summer time.
-        printf("Current time is %s\r\n", ctime(&timestamp));
-        }
-        strcpy (udp_timestamp, ctime(&timestamp));
-
-
-}   
-      
-      
-// WLAN security
-const char *sec2str(nsapi_security_t sec)
-{
-    switch (sec) {
-        case NSAPI_SECURITY_NONE:
-            return "None";
-        case NSAPI_SECURITY_WEP:
-            return "WEP";
-        case NSAPI_SECURITY_WPA:
-            return "WPA";
-        case NSAPI_SECURITY_WPA2:
-            return "WPA2";
-        case NSAPI_SECURITY_WPA_WPA2:
-            return "WPA/WPA2";
-        case NSAPI_SECURITY_UNKNOWN:
-        default:
-            return "Unknown";
-    }
-} 
-
-void scan_demo(WiFiInterface *wifi)
-{
-    WiFiAccessPoint *ap;
- 
-    printf("Scan:\r\n");
- 
-    int count = wifi->scan(NULL, 0);
- 
-    /* Limit number of network arbitrary to 15 */
-    count = count < 15 ? count : 15;
- 
-    ap = new WiFiAccessPoint[count];
- 
-    count = wifi->scan(ap, count);
-    for (int i = 0; i < count; i++) {
-        printf("Network: %s secured: %s BSSID: %hhX:%hhX:%hhX:%hhx:%hhx:%hhx RSSI: %hhd Ch: %hhd\r\n", ap[i].get_ssid(),
-               sec2str(ap[i].get_security()), ap[i].get_bssid()[0], ap[i].get_bssid()[1], ap[i].get_bssid()[2],
-               ap[i].get_bssid()[3], ap[i].get_bssid()[4], ap[i].get_bssid()[5], ap[i].get_rssi(), ap[i].get_channel());
-    }
-    printf("%d networks available.\r\n", count);
- 
-    delete[] ap;
-}

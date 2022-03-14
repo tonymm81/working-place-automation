@@ -2,19 +2,19 @@
     "config": {
         "wifi-ssid": {
             "help": "WiFi SSID",
-            "value": "\"your wlan\""
+            "value": "\"eagles nest\""
         },
         "wifi-password": {
             "help": "WiFi Password",
-            "value": "\"your password\""
+            "value": "\"Sellonatalie12\""
         },
         "esp-rx-pin": {
-            "help": "ESP8266 module Tx pin, Mc Rx PB_7 or PA_10",
-            "value": "PA_10"
+            "help": "ESP8266 module Tx pin, Mc Rx PB_7 or PC_11",
+            "value": "PC_11"
         },
         "esp-tx-pin": {
-            "help": "ESP8266 module Rx pin, Mc Tx PB_6 or PA_9",
-            "value": "PA_9"
+            "help": "ESP8266 module Rx pin, Mc Tx PB_6 or PC_10",
+            "value": "PC_10"
         }
     },
     "target_overrides": {

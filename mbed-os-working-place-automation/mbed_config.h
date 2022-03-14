@@ -22,10 +22,10 @@
 #define __MBED_CONFIG_DATA__
 
 // Configuration parameters
-#define CLOCK_SOURCE                                                          USE_PLL_MSI                                                                                      // set by target:NUCLEO_L432KC
-#define LPTICKER_DELAY_TICKS                                                  0                                                                                                // set by target:NUCLEO_L432KC
-#define MBED_CONF_APP_ESP_RX_PIN                                              PA_10                                                                                            // set by application
-#define MBED_CONF_APP_ESP_TX_PIN                                              PA_9                                                                                             // set by application
+#define CLOCK_SOURCE                                                          USE_PLL_HSE_EXTC|USE_PLL_HSI                                                                     // set by target:NUCLEO_F303RE
+#define LPTICKER_DELAY_TICKS                                                  1                                                                                                // set by target:FAMILY_STM32
+#define MBED_CONF_APP_ESP_RX_PIN                                              PC_11                                                                                            // set by application
+#define MBED_CONF_APP_ESP_TX_PIN                                              PC_10                                                                                            // set by application
 #define MBED_CONF_APP_WIFI_PASSWORD                                           "Sellonatalie12"                                                                                 // set by application
 #define MBED_CONF_APP_WIFI_SSID                                               "eagles nest"                                                                                    // set by application
 #define MBED_CONF_ATMEL_RF_ASSUME_SPACED_SPI                                  1                                                                                                // set by library:atmel-rf[STM]
@@ -56,6 +56,8 @@
 #define MBED_CONF_EVENTS_SHARED_STACKSIZE                                     2048                                                                                             // set by library:events
 #define MBED_CONF_EVENTS_USE_LOWPOWER_TIMER_TICKER                            0                                                                                                // set by library:events
 #define MBED_CONF_FILESYSTEM_PRESENT                                          1                                                                                                // set by library:filesystem
+#define MBED_CONF_FLASHIAP_BLOCK_DEVICE_BASE_ADDRESS                          0xFFFFFFFF                                                                                       // set by library:flashiap-block-device
+#define MBED_CONF_FLASHIAP_BLOCK_DEVICE_SIZE                                  0                                                                                                // set by library:flashiap-block-device
 #define MBED_CONF_GEMALTO_CINTERION_BAUDRATE                                  115200                                                                                           // set by library:GEMALTO_CINTERION
 #define MBED_CONF_GEMALTO_CINTERION_PROVIDE_DEFAULT                           0                                                                                                // set by library:GEMALTO_CINTERION
 #define MBED_CONF_GENERIC_AT3GPP_BAUDRATE                                     115200                                                                                           // set by library:GENERIC_AT3GPP
@@ -260,7 +262,6 @@
 #define MBED_CONF_TARGET_CONSOLE_UART                                         1                                                                                                // set by target:Target
 #define MBED_CONF_TARGET_DEEP_SLEEP_LATENCY                                   4                                                                                                // set by target:FAMILY_STM32
 #define MBED_CONF_TARGET_INIT_US_TICKER_AT_BOOT                               1                                                                                                // set by target:FAMILY_STM32
-#define MBED_CONF_TARGET_LPTICKER_LPTIM                                       1                                                                                                // set by target:NUCLEO_L432KC
 #define MBED_CONF_TARGET_LPTICKER_LPTIM_CLOCK                                 1                                                                                                // set by target:FAMILY_STM32
 #define MBED_CONF_TARGET_LPUART_CLOCK_SOURCE                                  USE_LPUART_CLK_LSE|USE_LPUART_CLK_PCLK1                                                          // set by target:FAMILY_STM32
 #define MBED_CONF_TARGET_LSE_AVAILABLE                                        1                                                                                                // set by target:FAMILY_STM32

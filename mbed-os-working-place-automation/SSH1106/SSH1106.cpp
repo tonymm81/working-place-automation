@@ -21,16 +21,16 @@ SSH1106::SSH1106(SPI &lcd, DigitalOut &lcd_cs, DigitalOut &lcd_cd, DigitalOut &l
 void SSH1106::init()
 {
     _lcd_cs->write(1);
-    _lcd->frequency(24000000);      // Abusing SPI to save some time.. Try a lower freq if this doesn't work
+    _lcd->frequency(8000000);      // Abusing SPI to save some time.. Try a lower freq if this doesn't work // old 24000000 // old 12000000
     _lcd->format(8,3);
     _lcd_cs->write(0);              // enable SPI
     _lcd_cd->write(0);              // COMMAND mode
 
     _lcd_rst->write(0);
-    wait_ms(100);
+    ThisThread::sleep_for(100);
     _lcd_rst->write(1);
 
-    wait_ms(50);
+    ThisThread::sleep_for(50);
 
     _lcd->write(0xAE);              // Display off
     _lcd->write(0x02);              // Set lower column address
@@ -40,7 +40,7 @@ void SSH1106::init()
     _lcd->write(0x81);              // Set contrast to
     _lcd->write(0x80);              // 128
     _lcd->write(0xA1);              // Segment remap
-    _lcd->write(0xA6);              // Inverse: normal (A7 = inverse)
+    _lcd->write(0xA6);              // Inverse: normal (A7 = inverse) // old value A6
     _lcd->write(0xA8);              // Multiplex ratio
     _lcd->write(0x3F);              // Duty = 1/32
     _lcd->write(0xAD);              // Charge pump enable
