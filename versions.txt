@@ -29,3 +29,7 @@ I also noticed that arduino D2 pin was broken. It wont go 0 state at all. this c
 to ssel to nucleo and connection didnt work because this pin..
 some how nucleo has earlier problems about serial communication(usb print) and i search the fault a long time and final try i flash the empty code
 with usb setting and print clause and it work. when i define the pins one by time i noticed that D1 pin causes this problem. its not connected now.
+
+version 104. 2.4.2022
+i add some timerules that lights will stay on if perso is not in room for 20 seconds. i also made a connections to high voltage side and now i testing the
+relays. powerstation it wont shut down, there is some problems with buttons i think.

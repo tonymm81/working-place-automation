@@ -24,7 +24,7 @@ Serial pc(USBTX, USBRX, 9600);
 //Serial pc(PC_12, PD_2, 9600);
 ESP8266Interface esp(MBED_CONF_APP_ESP_TX_PIN, MBED_CONF_APP_ESP_RX_PIN);
 //SPISlave(spiArduino);
-HCSR04  usensor(D14,D15);
+
   
   
 
@@ -45,6 +45,7 @@ DigitalIn ssel(PB_12);
 //spi communication setup
 SSH1106 ssh1106(oledspi, CS_to_screen, DC_to_screen, RST_to_screen); //screen
 SPISlave spiArduino(PB_15, PB_14, PB_13, PB_12); // mosi, miso, sck , ssel PB_12
+HCSR04  usensor(D14,D15);
 //SPISlave(spiArduino);
 //here are the global variables
 float lux = 0.0;
@@ -61,7 +62,8 @@ void screen(int line1, int line2, int line3);
 int message_from_master(int message);//spi comminication
 void my_spi_write(int choice,int device);//spi communication function to serial chips and oled screen
 bool check_if_person_is_room(bool person_in_room); // this function checks if the person is in the room with ultrasonic sensor and movement sensor
-int control_devices(bool soldering, bool power_machine, int write_flag);
+int control_devices(bool soldering, bool power_machine, int write_flag, int send_to_595_1);
+int timerule = 0;
 
 
 
@@ -95,13 +97,13 @@ int main()
     char number1[15];
     my_spi_write(8,0);//all off
     my_spi_write(13,1); // standby led on
-    //get_time_from_web();// throw error about new operator is out of memory. this function is planning
-   
+    //get_time_from_web();// throw error about new operator is out of memory
+    //get_time_from_web(); // gives a device error
     pc.printf("success\n");
     ssh1106.init();
     ThisThread::sleep_for(200);
     while(1){
-    
+        timerule = timerule+1;
         person_in_room = check_if_person_is_room(person_in_room); // this function call is to measure with two sensors are the person in the room
         printf(" person in room %d\n", person_in_room);
         lux = Lux_sensor.read() * 1000;
@@ -118,12 +120,13 @@ int main()
             
         }
         if (permission == true){ // here we wait user buttons state
-            write_flag = control_devices(soldering, power_machine, write_flag);
+            write_flag = control_devices(soldering, power_machine, write_flag, send_to_595_1);
             // do here menubutton
             
             if (asking_menu == 0){ // we dont know the user choice
                 screen(6,1,3);// ask soldering
                 btn1, btn2 = wait_buttons(btn1, btn2);
+                
                 if (btn1 >= 1){ soldering = true;} else{soldering==false;}
                 
                 screen(6,5,3); // ask power machine
@@ -134,6 +137,7 @@ int main()
                 asking_menu = 1; // now we no users choice and now raise the flag
                 }else{
                    screen(6,8,2);// back to menu button (solder this analog in or digital if avaible
+                   send_to_595_1=2; // this is passing the timrule
                     }    
                 
                 
@@ -145,52 +149,70 @@ int main()
                 asking_menu = 0;
                 screen(6,1,3);
                 write_flag = 0;
-                write_flag = control_devices(soldering, power_machine, write_flag);
+                
+                write_flag = control_devices(soldering, power_machine, write_flag, send_to_595_1);
                 }   
                      
-        if ( person_in_room == false && permission == true){
+        if ( person_in_room == false && permission == true && timerule > 20){
                 if (write_flag == 2 || write_flag == 1){
                     write_flag = 4; // if person is not in room lets  shutdown th soldering
+                    timerule = 0;
                 }
-                write_flag = control_devices(soldering, power_machine, write_flag);
+                write_flag = control_devices(soldering, power_machine, write_flag, send_to_595_1);
                 
         }
                 
         if (person_in_room == true && send_to_595_1 == 0 && permission == false){
-           my_spi_write(0,0); // lights on
-            
+           my_spi_write(2,0); // lights on
+            timerule = 0;
             send_to_595_1=1;
                
            } 
-        else if (person_in_room == false && send_to_595_1 == 1 && permission == false){
+        else if (person_in_room == false && send_to_595_1 == 1 && permission == false && timerule > 20){
              my_spi_write(8,0);// lights off
              send_to_595_1=0;
-                
+             timerule = 0;  
                 
                 }    
          }
+         
+         if (timerule > 30){
+                     
+                timerule = 0;
+                     }
                      
     
 }
 
 
-int control_devices(bool soldering, bool power_machine, int write_flag){ // depends on user choice here we switch devices on and also shutdown the soldering station in person in room is false
+int control_devices(bool soldering, bool power_machine, int write_flag, int send_to_595_1){ // depends on user choice here we switch devices on and also shutdown the soldering station in person in room is false
     if (soldering == true && person_in_room == true && write_flag == 0){
         my_spi_write(15, 0); // test 2 last bit zero
         write_flag = 1;
         printf("soldering on\n");
+        timerule = 0;
         }
     if ( power_machine == true && write_flag == 1){
         my_spi_write(14, 0); // test all bits up
         write_flag = 2;
         printf("power on\n");
         }
+        
+    if ( power_machine == false && write_flag == 1){
+        my_spi_write(16, 0);
+        printf("lets test tis");
+        }
     if ( person_in_room == false && write_flag == 4){
         my_spi_write(16, 0); // 3 last bit zero
         write_flag = 0;
         printf("solder off\n");
+        timerule = 0;
         
         }
+    if (permission == false && send_to_595_1==2){ // this is because if user shut down the device, timerule is not slow the shutting down
+        my_spi_write(2,0); // lights on
+        }    
+    
     printf("control_devices sol:%d pow %d flag %d\n", soldering, power_machine, write_flag);
     return write_flag;
     }
@@ -218,7 +240,7 @@ bool check_if_person_is_room(bool person_in_room){ // here we check is the perso
 void my_spi_write(int choice,int device){
     char bytesArray[] = { // here is output setups to both sn74hc595n chip
         0b10000000, //
-        0b01000000, // 
+        0b01000000, // main power, contactor here
         0b00100000, // 
         0b00010000, // 
         0b00001000, // 
@@ -231,14 +253,14 @@ void my_spi_write(int choice,int device){
         0b10111010, // soldering off
         0b01111100, //second sn74hc595n chip tree leds on
         0b01000000, // second sn74hc595n chip one led?
-        0b11111111,
+        0b11111111, // all on
         0b11111100,
-        0b11111000,
+        0b11111000, // test
         
         };
         
      
-    if (device ==0){ //here we choose wich chip we control
+    if (device ==0){
         CS_to_hc595chip.write(0);
         oledspi.write(bytesArray[choice]);
         ThisThread::sleep_for(200);
@@ -256,7 +278,8 @@ void my_spi_write(int choice,int device){
 
 
 int wait_buttons(int btn1, int btn2){ // here we wait user to chooce soldering and power usage.
-    btn1, btn2 = 0;
+    btn1 = 0; 
+    btn2 = 0;
     while(1){
         btn1 = switch_yes.read();
         btn2 = switch_no.read();
@@ -368,15 +391,15 @@ int message_from_master(int message)// here we go to spi connection slave mode a
     printf("here is message from master %d\n", message);
     
    printf("out of message function\n");
-   if(message == 1){ // master gives permission to start
+   if(message == 1){
        
         my_spi_write(12,1);
         permission = true;
         person_in_room = true;
-        msgback=10; // permission 
+        msgback=10; // permission
         
     }
-    if (message == 3 || message == 2){ // master gives signal to shutdown
+    if (message == 3 || message == 2){
         my_spi_write(13,1);
         permission = false;
         person_in_room = false;
