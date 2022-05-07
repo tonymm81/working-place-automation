@@ -33,3 +33,7 @@ with usb setting and print clause and it work. when i define the pins one by tim
 version 104. 2.4.2022
 i add some timerules that lights will stay on if perso is not in room for 20 seconds. i also made a connections to high voltage side and now i testing the
 relays. powerstation it wont shut down, there is some problems with buttons i think.
+
+version 107.
+now its working quite well. i add relays between high voltage and microkontroller side. now i have to figure out why network is not working. there is also
+smallbug that every device will shut down with delay. 
