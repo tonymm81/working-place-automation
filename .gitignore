@@ -1,12 +1,12 @@
 # .gitignore
 
 # Folders
-HCSR04/
-mbed-os/
-ntp-client/
-SSH1106/
+/mbed-os-working-place-automation/HCSR04/
+/mbed-os-working-place-automation/mbed-os/
+/mbed-os-working-place-automation/ntp-client/
+/mbed-os-working-place-automation/SSH1106/
 
 # files
-.mbed
-HCSR04.lib
-.link_script.sct
+/mbed-os-working-place-automation/.mbed
+/mbed-os-working-place-automation/HCSR04.lib
+/mbed-os-working-place-automation/.link_script.sct
