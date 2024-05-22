@@ -1,0 +1,12 @@
+# .gitignore
+
+# Folders
+HCSR04/
+mbed-os/
+ntp-client/
+SSH1106/
+
+# files
+.mbed
+HCSR04.lib
+.link_script.sct
